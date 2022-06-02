@@ -122,11 +122,18 @@ def get_logits(model, tokenizer, text, this_sequence, temperature):
     logits = logits[0, -1, :]/ temperature
     
     return logits, indexed_tokens, indexed_this_seq
-    
-def get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_max):
 
+
+cosine_table = {}
+
+def get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_max):
+    global cosine_table
     if len(keywords_enc)>1:
-        sims = np.array([cosine_similarity(np.reshape(w, (1, -1)), converter_table) for w in keywords_enc])
+        for i, w in enumerate(keywords_gpt):
+            word = keywords_gpt[w]
+            if word not in cosine_table:
+                cosine_table[word] = cosine_similarity(np.reshape(keywords_enc[i], (1, -1)), converter_table)
+        sims = np.array([cosine_table[word] for word in keywords_gpt.values()])
         if guarantee:
             for i, w in enumerate(keywords_gpt):
                 sims[i][0][w] = 1
@@ -175,6 +182,7 @@ def get_prediction(tokenizer, indexed_tokens, indexed_this_seq, keywords_gpt, pr
     return pred_word, predicted_text, predicted_index, this_sequence
 
 
+sim_table = {}
 
 def sample_sentence(text, this_sequence, tokenizer, model, keywords, enc_dict, guide_probs, converter_table, weight, guide=False, prev_proba=1, top_k=0, top_p=0.9, temperature=1., only_max=False, mode='max', guarantee=False, time=0, T_time=1, det_BS=False, ith=0):
     """ Samples the next word of the sequence with logit modification (guidance)
@@ -184,10 +192,11 @@ def sample_sentence(text, this_sequence, tokenizer, model, keywords, enc_dict, g
         mode='next':    the order of the guide words is fixed and each token is shifted towards the next guide word in the sequence
         mode='random':  a random word is selected from the remaining (not yet appeared) guide words and each token is shifted towards this guide word
     """    
-    
+    global sim_table
     # Get word stems, encode keywords and get logits from LM from context
     guide_word_stems = [porter.stem(w.lower()) for w in keywords]    
     keywords_enc, keywords_gpt = get_keywords(keywords, enc_dict, tokenizer, mode)
+    sim_key = ":".join(sorted(keywords_gpt.values()))
     logits, indexed_tokens, indexed_this_seq = get_logits(model, tokenizer, text, this_sequence, temperature)
     
     # Get probabilities for ppl calculation and log-softmax of logits for modification
@@ -196,9 +205,11 @@ def sample_sentence(text, this_sequence, tokenizer, model, keywords, enc_dict, g
     
     # Calculate cosine similarity, weight with annealing and modify logits
     if keywords_enc and guide:
-        sim = get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_max)        
+        if sim_key not in sim_table:
+            sim_table[sim_key] = get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_max)
         weight = get_weight(weight, guarantee, T_time, time)
-        logits = logits + torch.tensor(sim*weight).cuda() #
+        #logits = logits + torch.tensor(sim*weight).cuda() #
+        logits = logits + torch.tensor(sim_table[sim_key] * weight).cuda()
 
     ## Sample tokens
     logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p) ###  
@@ -748,6 +759,7 @@ if __name__ == '__main__':
             n_generated_sentences = args.n_generated_sentences
             
         for i in range(args.n_repetitions):
+            sim_table = {}
             results = conditional_language_generation(model,tokenizer,  
                                                         keyword_set=keyword_set,
                                                         top_p=args.top_p,
