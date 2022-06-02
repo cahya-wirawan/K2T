@@ -110,13 +110,13 @@ def get_logits(model, tokenizer, text, this_sequence, temperature):
     indexed_tokens = tokenizer.encode(text)
     indexed_this_seq = tokenizer.encode(this_sequence)
     tokens_tensor = torch.tensor([indexed_tokens])
-    tokens_tensor = tokens_tensor.to('cuda')
+    #tokens_tensor = tokens_tensor.to('cuda')
     
     # Predict all tokens
     outputs = model(tokens_tensor)
     
     del tokens_tensor
-    torch.cuda.empty_cache()
+    #torch.cuda.empty_cache()
     
     logits = outputs.logits
     logits = logits[0, -1, :]/ temperature
@@ -144,7 +144,7 @@ def get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_m
         else:
             raise Exception("keywords_enc length is greater than 1 so expect to be in mode 'max' or 'all'")
     else:
-        word = keywords_gpt[0]
+        word = list(keywords_gpt.values())[0]
         if word not in cosine_table:
             cosine_table[word] = cosine_similarity(np.reshape(keywords_enc[0], (1, -1)), converter_table)
         sim = cosine_table[word]
@@ -212,7 +212,7 @@ def sample_sentence(text, this_sequence, tokenizer, model, keywords, enc_dict, g
             sim_table[sim_key] = get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_max)
         weight = get_weight(weight, guarantee, T_time, time)
         #logits = logits + torch.tensor(sim*weight).cuda() #
-        logits = logits + torch.tensor(sim_table[sim_key] * weight).cuda()
+        logits = logits + torch.tensor(sim_table[sim_key] * weight) #.cuda()
 
     ## Sample tokens
     logits = top_k_top_p_filtering(logits, top_k=top_k, top_p=top_p) ###  
@@ -591,7 +591,7 @@ def conditional_language_generation(
     text_file_sentences.close()
     
     del model
-    torch.cuda.empty_cache()
+    #torch.cuda.empty_cache()
 
     print("END: ", keywords)
 
@@ -732,7 +732,7 @@ if __name__ == '__main__':
     model = GPT2LMHeadModel.from_pretrained('gpt2-large')
     tokenizer = GPT2Tokenizer.from_pretrained('gpt2-large')
     model.eval()   
-    model.to('cuda') #
+    #model.to('cuda') #
 
     # Get keywords and save path  
     folder_name, file_name = get_folderfile_name(args.task, file_name)
