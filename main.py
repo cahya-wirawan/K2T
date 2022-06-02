@@ -144,7 +144,10 @@ def get_sim(keywords_enc, keywords_gpt, converter_table, guarantee, mode, only_m
         else:
             raise Exception("keywords_enc length is greater than 1 so expect to be in mode 'max' or 'all'")
     else:
-        sim = cosine_similarity(np.reshape(keywords_enc[0], (1, -1)), converter_table)
+        word = keywords_gpt[0]
+        if word not in cosine_table:
+            cosine_table[word] = cosine_similarity(np.reshape(keywords_enc[0], (1, -1)), converter_table)
+        sim = cosine_table[word]
         
     # Only the target word, not the neighbour (as measured by cosine similarity)
     if only_max == True:
